@@ -19,10 +19,10 @@ jobs:
         with:
           fetch-depth: 0
       - run: git fetch --force --tags
-      - uses: actions/setup-go@v3
-        with:
-          go-version: '>=1.17.7'
-          cache: true
+      # - uses: actions/setup-go@v3
+      #   with:
+      #     go-version: '>=1.17.7'
+      #     cache: true
       # More assembly might be required: Docker logins, GPG, etc. It all depends
       # on your needs.
       - uses: goreleaser/goreleaser-action@v2
