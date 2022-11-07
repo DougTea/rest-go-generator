@@ -53,16 +53,14 @@ func (n addressNamer) Name(t *types.Type) string {
 	return n.Namer.Name(t)
 }
 
-func NameSystems() namer.NameSystems {
-	return namer.NameSystems{
-		"public":  namer.NewPublicNamer(0),
-		"raw":     namer.NewRawNamer("", nil),
-		"address": newAddressNamer(namer.NewRawNamer("", nil)),
-	}
-}
-
-func DefaultNameSystem() string {
-	return "public"
+var routeNameStrategy = &namer.NameStrategy{
+	Join: func(pre string, in []string, post string) string {
+		return strings.Join(in, "_")
+	},
+	IgnoreWords: map[string]bool{
+		"Service": true,
+		"Biz":     true,
+	},
 }
 
 func Packages(ctx *generator.Context, arguments *args.GeneratorArgs) generator.Packages {
@@ -74,14 +72,14 @@ func Packages(ctx *generator.Context, arguments *args.GeneratorArgs) generator.P
 		pkg := ctx.Universe.Package(i)
 		for _, t := range pkg.Types {
 			if _, ok := types.ExtractCommentTags("+", append(t.CommentLines, t.SecondClosestCommentLines...))[restGinEnabledName]; ok {
-				routeGenerators = append(routeGenerators, NewGinGenerator(t))
+				routeGenerators = append(routeGenerators, NewGinGenerator(t, routeNameStrategy.Name(t)+arguments.OutputFileBaseName))
 			}
 		}
 	}
 
 	routePackage := &generator.DefaultPackage{
-		PackageName:   "route",
-		PackagePath:   filepath.Join(arguments.OutputPackagePath, "route"),
+		PackageName:   filepath.Base(arguments.OutputPackagePath),
+		PackagePath:   arguments.OutputPackagePath,
 		Source:        "",
 		HeaderText:    header,
 		GeneratorList: routeGenerators,
@@ -119,7 +117,7 @@ func parseRouteTag(commentLines []string) (*routeTag, error) {
 	values := types.ExtractCommentTags("+", commentLines)
 	if m, ok := values[method]; ok && len(m) > 0 {
 		for _, httpMethod := range HttpMethods {
-			if strings.ContainsAny(strings.ToLower(string(httpMethod)), strings.ToLower(m[0])) {
+			if strings.Contains(strings.ToLower(string(httpMethod)), strings.ToLower(m[0])) {
 				tag.Method = httpMethod
 				break
 			}
@@ -144,13 +142,22 @@ type GinGenerator struct {
 	imports        namer.ImportTracker
 }
 
-func NewGinGenerator(t *types.Type) generator.Generator {
+func NewGinGenerator(t *types.Type, name string) generator.Generator {
 	return &GinGenerator{
 		DefaultGen: generator.DefaultGen{
-			OptionalName: t.Name.Name,
+			OptionalName: name,
 		},
 		typeToGenerate: t,
 		imports:        generator.NewImportTracker(t),
+	}
+}
+
+func (g *GinGenerator) Namers(c *generator.Context) namer.NameSystems {
+	// Have the raw namer for this file track what it imports.
+	return namer.NameSystems{
+		"public":  namer.NewPublicNamer(0),
+		"raw":     namer.NewRawNamer(g.typeToGenerate.Name.Package, g.imports),
+		"address": newAddressNamer(namer.NewRawNamer(g.typeToGenerate.Name.Package, g.imports)),
 	}
 }
 
