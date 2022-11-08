@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -69,23 +70,38 @@ func Packages(ctx *generator.Context, arguments *args.GeneratorArgs) generator.P
 	for _, i := range arguments.InputDirs {
 		klog.V(5).Infof("Considering pkg %q", i)
 		pkg := ctx.Universe.Package(i)
-		goPkg, err := packages.Load(&packages.Config{Mode: packages.NeedModule}, pkg.Path)
-
-		if err != nil || len(goPkg) != 1 {
+		routeGenerators := []generator.Generator{}
+		absOutputBase, err := filepath.Abs(arguments.OutputBase)
+		if err != nil {
+			klog.Fatalf("Error: cannot get abs path of output base,%v", err)
+		}
+		pkgPath := arguments.OutputPackagePath
+		var pkgName, outputPkgPath string
+		goPkgs, err := packages.Load(&packages.Config{Mode: packages.NeedModule}, pkg.Path)
+		if err != nil || len(goPkgs) != 1 {
 			klog.Fatalf("Error: cannot load go package %v", err)
 		}
-		routeGenerators := []generator.Generator{}
+		outputBasePkgs, err := packages.Load(&packages.Config{Mode: packages.NeedName | packages.NeedModule}, arguments.OutputBase)
+		if len(outputBasePkgs) == 1 {
+			outputPkgPath = filepath.Join(outputBasePkgs[0].PkgPath, arguments.OutputPackagePath)
+		}
+		if arguments.OutputPackagePath == "" {
+			if err == nil && len(outputBasePkgs) == 1 && outputBasePkgs[0].Name != "" {
+				pkgName = outputBasePkgs[0].Name
+			} else {
+				pkgName = filepath.Base(absOutputBase)
+			}
+		} else {
+			pkgName = filepath.Base(arguments.OutputPackagePath)
+		}
+
 		for _, t := range pkg.Types {
 			if _, ok := types.ExtractCommentTags("+", append(t.CommentLines, t.SecondClosestCommentLines...))[restGinEnabledName]; ok {
-				routeGenerators = append(routeGenerators, NewGinGenerator(t, routeNameStrategy.Name(t)+arguments.OutputFileBaseName))
+				routeGenerators = append(routeGenerators, NewGinGenerator(t, routeNameStrategy.Name(t)+arguments.OutputFileBaseName, outputPkgPath))
 			}
 		}
 		if len(routeGenerators) != 0 {
-			var pkgPath, pkgName string
-			if arguments.OutputPackagePath == "" {
-				pkgPath = strings.ReplaceAll(pkg.Path, goPkg[0].Module.Path+"/", "")
-				pkgName = pkg.Name
-			}
+			klog.Infof("Info: generate package name [%v] , path [%v] and outputPkg [%v]", pkgName, pkgPath, outputPkgPath)
 			pkgs = append(pkgs, &generator.DefaultPackage{
 				PackageName:   pkgName,
 				PackagePath:   pkgPath,
@@ -149,15 +165,15 @@ func parseRouteTag(commentLines []string) (*routeTag, error) {
 type GinGenerator struct {
 	generator.DefaultGen
 	typeToGenerate *types.Type
+	outputPkg      string
 	imports        namer.ImportTracker
 }
 
-func NewGinGenerator(t *types.Type, name string) generator.Generator {
+func NewGinGenerator(t *types.Type, name string, outputPkg string) generator.Generator {
 	return &GinGenerator{
-		DefaultGen: generator.DefaultGen{
-			OptionalName: name,
-		},
+		DefaultGen:     generator.DefaultGen{OptionalName: name},
 		typeToGenerate: t,
+		outputPkg:      outputPkg,
 		imports:        generator.NewImportTracker(t),
 	}
 }
@@ -166,7 +182,7 @@ func (g *GinGenerator) Namers(c *generator.Context) namer.NameSystems {
 	// Have the raw namer for this file track what it imports.
 	return namer.NameSystems{
 		"public":  namer.NewPublicNamer(0),
-		"raw":     namer.NewRawNamer(g.typeToGenerate.Name.Package, g.imports),
+		"raw":     namer.NewRawNamer(g.outputPkg, g.imports),
 		"address": newAddressNamer(namer.NewRawNamer(g.typeToGenerate.Name.Package, g.imports)),
 	}
 }
