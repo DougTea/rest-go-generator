@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"github.com/DougTea/rest-go-generator/pkg/gin"
+	"golang.org/x/tools/go/packages"
+	"k8s.io/code-generator/pkg/util"
 	"k8s.io/gengo/args"
 	"k8s.io/gengo/namer"
 	"k8s.io/klog/v2"
@@ -13,6 +15,16 @@ func Run() {
 
 	// Override defaults.
 	arguments.OutputFileBaseName = "Controller"
+	arguments.OutputBase = "."
+	if len(arguments.InputDirs) == 0 {
+		cpkg := util.CurrentPackage()
+		p, err := packages.Load(nil, ".")
+		if err != nil && len(p) != 1 {
+			klog.Fatalf("Error: cannot determine input package.Detail: %v", err)
+		}
+		arguments.InputDirs = append(arguments.InputDirs, p[0].PkgPath)
+		arguments.InputDirs = append(arguments.InputDirs, cpkg)
+	}
 
 	// Custom args.
 	// customArgs := &gin.CustomArgs{}

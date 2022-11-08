@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"io"
 	"path"
-	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/DougTea/go-common/pkg/web"
+	"golang.org/x/tools/go/packages"
 	"k8s.io/gengo/args"
 	"k8s.io/gengo/generator"
 	"k8s.io/gengo/namer"
@@ -65,26 +65,36 @@ var routeNameStrategy = &namer.NameStrategy{
 
 func Packages(ctx *generator.Context, arguments *args.GeneratorArgs) generator.Packages {
 	header := []byte(fmt.Sprintf("//go:build !%s\n\n", arguments.GeneratedBuildTag))
-
-	routeGenerators := []generator.Generator{}
+	pkgs := generator.Packages{}
 	for _, i := range arguments.InputDirs {
 		klog.V(5).Infof("Considering pkg %q", i)
 		pkg := ctx.Universe.Package(i)
+		goPkg, err := packages.Load(&packages.Config{Mode: packages.NeedModule}, pkg.Path)
+
+		if err != nil || len(goPkg) != 1 {
+			klog.Fatalf("Error: cannot load go package %v", err)
+		}
+		routeGenerators := []generator.Generator{}
 		for _, t := range pkg.Types {
 			if _, ok := types.ExtractCommentTags("+", append(t.CommentLines, t.SecondClosestCommentLines...))[restGinEnabledName]; ok {
 				routeGenerators = append(routeGenerators, NewGinGenerator(t, routeNameStrategy.Name(t)+arguments.OutputFileBaseName))
 			}
 		}
+		if len(routeGenerators) != 0 {
+			var pkgPath, pkgName string
+			if arguments.OutputPackagePath == "" {
+				pkgPath = strings.ReplaceAll(pkg.Path, goPkg[0].Module.Path+"/", "")
+				pkgName = pkg.Name
+			}
+			pkgs = append(pkgs, &generator.DefaultPackage{
+				PackageName:   pkgName,
+				PackagePath:   pkgPath,
+				HeaderText:    header,
+				GeneratorList: routeGenerators,
+			})
+		}
 	}
-
-	routePackage := &generator.DefaultPackage{
-		PackageName:   filepath.Base(arguments.OutputPackagePath),
-		PackagePath:   arguments.OutputPackagePath,
-		Source:        "",
-		HeaderText:    header,
-		GeneratorList: routeGenerators,
-	}
-	return generator.Packages{routePackage}
+	return pkgs
 }
 
 type serviceTag struct {

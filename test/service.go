@@ -1,5 +1,9 @@
 package test
 
+//go:generate rest-go-generator\
+//-i "github.com/DougTea/rest-go-generator/test"
+//
+
 type Param struct {
 }
 
