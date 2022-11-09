@@ -24,3 +24,21 @@ type TestService interface {
 	// +successCode=201
 	PostRes() (Result error)
 }
+
+
+// +rest:gin
+// +path=/test1
+type Test1Service interface {
+	// +path=/paramAndRes
+	// +method=post
+	// +successCode=201
+	GetParmAndRes(*Param) (*Result, error)
+	// +path=/param
+	// +method=get
+	// +successCode=201
+	GetParm(Param) error
+	// +path=/res
+	// +method=post
+	// +successCode=201
+	PostRes() (Result error)
+}

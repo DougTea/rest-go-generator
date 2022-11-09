@@ -188,8 +188,7 @@ func (g *GinGenerator) Namers(c *generator.Context) namer.NameSystems {
 }
 
 func (g *GinGenerator) Filter(c *generator.Context, t *types.Type) bool {
-	tagVals := types.ExtractCommentTags("+", append(t.CommentLines, t.SecondClosestCommentLines...))[restGinEnabledName]
-	return tagVals != nil
+	return t.Name == g.typeToGenerate.Name
 }
 
 func (g *GinGenerator) GenerateType(c *generator.Context, t *types.Type, w io.Writer) error {
@@ -270,7 +269,7 @@ func extractResponseType(t *types.Type) (*types.Type, error) {
 }
 
 var typeGinRoute = `
-func new{{ .funcName }}Router(svc {{ .serviceType|raw }})*web.Router{
+func new{{ .funcName }}RouterOf{{ .serviceType|public }}(svc {{ .serviceType|raw }})*web.Router{
 	return &web.Router{
 		Method: {{ .httpMethodType|raw }},
 		Path: "{{ .path }}",
@@ -312,7 +311,7 @@ func New{{ .type|public }}Controller(svc {{ .type|raw }})*{{ .type|public }}Cont
 		Service: svc,
 		Routers: []*web.Router{
 		{{- range $k,$v := .type.Methods }}
-			new{{ $k }}Router(svc),
+			new{{ $k }}RouterOf{{ $.type|public }}(svc),
 		{{- end }}
 		},
 	}
