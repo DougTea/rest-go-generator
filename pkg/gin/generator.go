@@ -56,7 +56,25 @@ func (n addressNamer) Name(t *types.Type) string {
 
 var routeNameStrategy = &namer.NameStrategy{
 	Join: func(pre string, in []string, post string) string {
-		return strings.Join(in, "_")
+		res := make([]byte, 0)
+		for i := 0; i < len(pre); i++ {
+			if c := pre[i]; c >= 'A' && c <= 'Z' {
+				res = append(res, '_', 'a'+c-'A')
+			} else {
+				res = append(res, c)
+			}
+		}
+		in = append(in, post)
+		for i := 0; i < len(in); i++ {
+			for j := 0; j < len(in[i]); j++ {
+				if c := in[i][j]; c >= 'A' && c <= 'Z' {
+					res = append(res, '_', 'a'+c-'A')
+				} else {
+					res = append(res, c)
+				}
+			}
+		}
+		return strings.TrimPrefix(string(res), "_")
 	},
 	IgnoreWords: map[string]bool{
 		"Service": true,
@@ -97,7 +115,7 @@ func Packages(ctx *generator.Context, arguments *args.GeneratorArgs) generator.P
 
 		for _, t := range pkg.Types {
 			if _, ok := types.ExtractCommentTags("+", append(t.CommentLines, t.SecondClosestCommentLines...))[restGinEnabledName]; ok {
-				routeGenerators = append(routeGenerators, NewGinGenerator(t, routeNameStrategy.Name(t)+arguments.OutputFileBaseName, outputPkgPath))
+				routeGenerators = append(routeGenerators, NewGinGenerator(t, routeNameStrategy.Join("", []string{routeNameStrategy.Name(t)}, arguments.OutputFileBaseName), outputPkgPath))
 			}
 		}
 		if len(routeGenerators) != 0 {
@@ -302,13 +320,13 @@ func new{{ .funcName }}RouterOf{{ .serviceType|public }}(svc {{ .serviceType|raw
 `
 var typeController = `
 type {{ .type|public }}Controller struct{
-	Service {{ .type|raw }}
+	service {{ .type|raw }}
 	Routers []*web.Router
 }
 
 func New{{ .type|public }}Controller(svc {{ .type|raw }})*{{ .type|public }}Controller{
 	return &{{ .type|public }}Controller{
-		Service: svc,
+		service: svc,
 		Routers: []*web.Router{
 		{{- range $k,$v := .type.Methods }}
 			new{{ $k }}RouterOf{{ $.type|public }}(svc),
