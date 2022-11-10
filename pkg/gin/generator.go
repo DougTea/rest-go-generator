@@ -234,7 +234,8 @@ func (g *GinGenerator) GenerateType(c *generator.Context, t *types.Type, w io.Wr
 		if err != nil {
 			return err
 		}
-		httpMethodType := types.Ref("github.com/DougTea/go-common/pkg/web", getStringOfHttpMethod(tag.Method))
+		httpMethodStr := getStringOfHttpMethod(tag.Method)
+		httpMethodType := types.Ref("github.com/DougTea/go-common/pkg/web", httpMethodStr)
 		var resultDeclare, requestDeclare string
 		operatorDeclare := "="
 		if responseType != nil {
@@ -258,6 +259,7 @@ func (g *GinGenerator) GenerateType(c *generator.Context, t *types.Type, w io.Wr
 			"funcName":       k,
 			"tag":            tag,
 			"httpMethodType": httpMethodType,
+			"httpMethodStr":  httpMethodStr,
 			"funcInvokeCode": fmt.Sprintf("%serr %s svc.%s(%s)", resultDeclare, operatorDeclare, k, requestDeclare),
 		}
 		sw.Do(typeGinRoute, routeMap)
@@ -287,6 +289,17 @@ func extractResponseType(t *types.Type) (*types.Type, error) {
 }
 
 var typeGinRoute = `
+// {{ .funcName }} godoc
+// @Summary {{ .funcName }}
+// @Description {{ .funcName }}
+// @Accept  json
+// @Produce  json
+{{- if .requestType }}
+// @Param {{ .requestType|public }} {{ if eq .httpMethodStr "MethodGet" }}query{{- else -}}body{{- end }} {{ .requestType|raw }} true ""
+{{- end }}
+// @Success 200 {object} {{ if .responseType -}}{{ .responseType|raw }}{{- else -}}nil{{- end }}
+// @Failure default {object} web.ErrorMessage
+// @Router {{ .path }} [{{ .tag.Method }}]
 func new{{ .funcName }}RouterOf{{ .serviceType|public }}(svc {{ .serviceType|raw }})*web.Router{
 	return &web.Router{
 		Method: {{ .httpMethodType|raw }},
