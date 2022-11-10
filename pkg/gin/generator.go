@@ -49,7 +49,7 @@ func newAddressNamer(n namer.Namer) *addressNamer {
 
 func (n addressNamer) Name(t *types.Type) string {
 	if t.Kind == types.Pointer {
-		return "&" + n.Namer.Name(t.Elem)
+		return n.Name(t.Elem)
 	}
 	return n.Namer.Name(t)
 }
@@ -201,7 +201,7 @@ func (g *GinGenerator) Namers(c *generator.Context) namer.NameSystems {
 	return namer.NameSystems{
 		"public":  namer.NewPublicNamer(0),
 		"raw":     namer.NewRawNamer(g.outputPkg, g.imports),
-		"address": newAddressNamer(namer.NewRawNamer(g.typeToGenerate.Name.Package, g.imports)),
+		"address": newAddressNamer(namer.NewRawNamer(g.outputPkg, g.imports)),
 	}
 }
 
@@ -234,7 +234,8 @@ func (g *GinGenerator) GenerateType(c *generator.Context, t *types.Type, w io.Wr
 		if err != nil {
 			return err
 		}
-		httpMethodType := types.Ref("github.com/DougTea/go-common/pkg/web", getStringOfHttpMethod(tag.Method))
+		httpMethodStr := getStringOfHttpMethod(tag.Method)
+		httpMethodType := types.Ref("github.com/DougTea/go-common/pkg/web", httpMethodStr)
 		var resultDeclare, requestDeclare string
 		operatorDeclare := "="
 		if responseType != nil {
@@ -258,6 +259,7 @@ func (g *GinGenerator) GenerateType(c *generator.Context, t *types.Type, w io.Wr
 			"funcName":       k,
 			"tag":            tag,
 			"httpMethodType": httpMethodType,
+			"httpMethodStr":  httpMethodStr,
 			"funcInvokeCode": fmt.Sprintf("%serr %s svc.%s(%s)", resultDeclare, operatorDeclare, k, requestDeclare),
 		}
 		sw.Do(typeGinRoute, routeMap)
@@ -287,17 +289,24 @@ func extractResponseType(t *types.Type) (*types.Type, error) {
 }
 
 var typeGinRoute = `
+// {{ .funcName }} godoc
+// @Summary {{ .funcName }}
+// @Description {{ .funcName }}
+// @Accept  json
+// @Produce  json
+{{- if .requestType }}
+// @Param {{ .requestType|raw }} {{ if eq .httpMethodStr "MethodGet" }}query{{- else -}}body{{- end }} {{ .requestType|address }} true "{{ .requestType|raw }}"
+{{- end }}
+// @Success 200 {object} {{ if .responseType -}}{{ .responseType|address }}{{- else -}}nil{{- end }}
+// @Failure default {object} web.ErrorMessage
+// @Router {{ .path }} [{{ .tag.Method }}]
 func new{{ .funcName }}RouterOf{{ .serviceType|public }}(svc {{ .serviceType|raw }})*web.Router{
 	return &web.Router{
 		Method: {{ .httpMethodType|raw }},
 		Path: "{{ .path }}",
 		Handler: func(c *gin.Context){
 			{{- if .requestType }}
-			{{- if eq .requestType.Kind "Pointer" }}
-			p := new({{ .requestType.Elem|raw }})
-			{{- else }}
-			p := new({{ .requestType|raw }})
-			{{- end }}
+			p := new({{ .requestType|address }})
 			err := c.Bind(p)
 			if err!=nil{
 				c.Error(err)
