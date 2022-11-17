@@ -28,6 +28,7 @@ type TestService interface {
 
 // +rest:gin
 // +path=/test1
+// +extra=true
 type Test1Service interface {
 	// +path=/paramAndRes
 	// +method=post

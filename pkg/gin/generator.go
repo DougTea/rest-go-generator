@@ -133,6 +133,7 @@ func Packages(ctx *generator.Context, arguments *args.GeneratorArgs) generator.P
 
 type serviceTag struct {
 	BasePath string
+	Extra    bool
 }
 
 type routeTag struct {
@@ -144,11 +145,16 @@ type routeTag struct {
 func parseServiceTag(commentLines []string) (*serviceTag, error) {
 	values := types.ExtractCommentTags("+", commentLines)
 	tagBasePath := "/"
+	extra := false
 	if v, ok := values[basePath]; ok && len(v) > 0 {
 		tagBasePath = v[0]
 	}
+	if v, ok := values["extra"]; ok && len(v) > 0 {
+		extra = v[0] == "true"
+	}
 	return &serviceTag{
 		BasePath: tagBasePath,
+		Extra:    extra,
 	}, nil
 }
 
@@ -217,7 +223,8 @@ func (g *GinGenerator) GenerateType(c *generator.Context, t *types.Type, w io.Wr
 		return err
 	}
 	controllerMap := map[string]interface{}{
-		"type": t,
+		"type":  t,
+		"extra": serviceTag.Extra,
 	}
 
 	sw.Do(typeController, controllerMap)
@@ -236,19 +243,12 @@ func (g *GinGenerator) GenerateType(c *generator.Context, t *types.Type, w io.Wr
 		}
 		httpMethodStr := getStringOfHttpMethod(tag.Method)
 		httpMethodType := types.Ref("github.com/DougTea/go-common/pkg/web", httpMethodStr)
-		var resultDeclare, requestDeclare string
-		operatorDeclare := "="
-		if responseType != nil {
-			resultDeclare = "r,"
-			operatorDeclare = ":="
-		}
+		var requestDeclare string
 		if requestType != nil {
 			if requestType.Kind != types.Pointer {
 				requestDeclare += "*"
 			}
 			requestDeclare += "p"
-		} else if responseType == nil {
-			operatorDeclare = ":="
 		}
 		routeMap := map[string]interface{}{
 			"type":           v,
@@ -260,7 +260,8 @@ func (g *GinGenerator) GenerateType(c *generator.Context, t *types.Type, w io.Wr
 			"tag":            tag,
 			"httpMethodType": httpMethodType,
 			"httpMethodStr":  httpMethodStr,
-			"funcInvokeCode": fmt.Sprintf("%serr %s svc.%s(%s)", resultDeclare, operatorDeclare, k, requestDeclare),
+			"param":          requestDeclare,
+			"extra":          serviceTag.Extra,
 		}
 		sw.Do(typeGinRoute, routeMap)
 	}
@@ -300,21 +301,25 @@ var typeGinRoute = `
 // @Success 200 {object} {{ if .responseType -}}{{ .responseType|address }}{{- else -}}nil{{- end }}
 // @Failure default {object} web.ErrorMessage
 // @Router {{ .path }} [{{ .tag.Method }}]
-func new{{ .funcName }}RouterOf{{ .serviceType|public }}(svc {{ .serviceType|raw }})*web.Router{
+func (g *{{ .serviceType|public }}Controller){{ .funcName }}()*web.Router{
 	return &web.Router{
 		Method: {{ .httpMethodType|raw }},
 		Path: "{{ .path }}",
 		Handler: func(c *gin.Context){
 			{{- if .requestType }}
 			p := new({{ .requestType|address }})
-			err := c.Bind(p)
-			if err!=nil{
+			if err := c.Bind(p);err!=nil{
 				c.Error(err)
 				return
 			}
 			{{- end }}
-			{{ .funcInvokeCode }}
-			if err!=nil{
+			{{ if .extra -}}
+			if err:=g.extra.{{ .funcName }}(c{{ if .requestType }},{{ .param }}{{ end }});err!=nil{
+				c.Error(err)
+				return
+			}
+			{{- end }}
+			if {{ if .responseType }}r,{{ end }}err:=g.service.{{ .funcName }}({{ if .requestType }}{{ .param }}{{ end }});err!=nil{
 				c.Error(err)
 			}else{
 				{{- if .responseType }}
@@ -330,17 +335,33 @@ func new{{ .funcName }}RouterOf{{ .serviceType|public }}(svc {{ .serviceType|raw
 var typeController = `
 type {{ .type|public }}Controller struct{
 	service {{ .type|raw }}
-	Routers []*web.Router
+	{{ if .extra -}}
+	extra {{ .type|public }}Extra
+	{{- end }}
 }
 
-func New{{ .type|public }}Controller(svc {{ .type|raw }})*{{ .type|public }}Controller{
+{{ if .extra -}}
+type {{ .type|public }}Extra interface{
+	{{- range $k,$v := .type.Methods }}
+	{{ $k }}(*gin.Context{{ range $i,$p := $v.Signature.Parameters }},{{ $p|raw }}{{ end }})error
+	{{ end -}}
+}
+{{- end }}
+
+func New{{ .type|public }}Controller(svc {{ .type|raw }}{{- if .extra }},extra {{ .type|public }}Extra{{- end }})*{{ .type|public }}Controller{
 	return &{{ .type|public }}Controller{
 		service: svc,
-		Routers: []*web.Router{
-		{{- range $k,$v := .type.Methods }}
-			new{{ $k }}RouterOf{{ $.type|public }}(svc),
+		{{ if .extra -}}
+		extra: extra,
 		{{- end }}
-		},
 	}
 }
+
+func (g *{{ .type|public }}Controller) GetRouters()[]*web.Router{
+	return []*web.Router{
+		{{- range $k,$v := .type.Methods }}
+			g.{{ $k }}(),
+		{{- end }}
+	}
+} 
 `
