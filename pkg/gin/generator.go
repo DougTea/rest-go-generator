@@ -293,7 +293,9 @@ var typeGinRoute = `
 // {{ .funcName }} godoc
 // @Summary {{ .funcName }}
 // @Description {{ .funcName }}
+{{- if eq .httpMethodStr "MethodGet" | not }}
 // @Accept  json
+{{- end }}
 // @Produce  json
 {{- if .requestType }}
 // @Param {{ .requestType|raw }} {{ if eq .httpMethodStr "MethodGet" }}query{{- else -}}body{{- end }} {{ .requestType|address }} true "{{ .requestType|raw }}"
@@ -308,7 +310,7 @@ func (g *{{ .serviceType|public }}Controller){{ .funcName }}()*web.Router{
 		Handler: func(c *gin.Context){
 			{{- if .requestType }}
 			p := new({{ .requestType|address }})
-			if err := c.Bind(p);err!=nil{
+			if err := c.Bind{{- if eq .httpMethodStr "MethodGet" -}}Query{{- else -}}JSON{{- end -}}(p);err!=nil{
 				c.Error(err)
 				return
 			}
