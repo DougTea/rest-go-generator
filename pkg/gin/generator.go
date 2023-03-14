@@ -5,6 +5,7 @@ import (
 	"io"
 	"path"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -228,7 +229,13 @@ func (g *GinGenerator) GenerateType(c *generator.Context, t *types.Type, w io.Wr
 	}
 
 	sw.Do(typeController, controllerMap)
-	for k, v := range t.Methods {
+	methods := make([]string, 0, len(t.Methods))
+	for k, _ := range t.Methods {
+		methods = append(methods, k)
+	}
+	sort.Strings(methods)
+	for _, k := range methods {
+		v := t.Methods[k]
 		requestType, err := extractRequestType(v)
 		if err != nil {
 			return err
