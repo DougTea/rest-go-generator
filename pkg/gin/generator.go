@@ -358,11 +358,11 @@ type {{ .type|public }}Controller struct{
 
 {{ if .extra -}}
 type {{ .type|public }}Extra interface{
-	{{- range $k,$v := .type.Methods }}
-	{{ $k }}(*gin.Context{{ range $i,$p := $v.Signature.Parameters }},{{ $p|raw }}{{ end }})error
-	{{ end -}}
+	{{- range .methods }}
+	{{ . }}(*gin.Context{{ range $i,$p := (index $.type.Methods .).Signature.Parameters }},{{ $p|raw }}{{ end }})error
+	{{- end }}
 }
-{{- end }}
+{{ end -}}
 
 func New{{ .type|public }}Controller(svc {{ .type|raw }}{{- if .extra }},extra {{ .type|public }}Extra{{- end }})*{{ .type|public }}Controller{
 	return &{{ .type|public }}Controller{
