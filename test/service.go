@@ -23,8 +23,8 @@ type TestService interface {
 	// +method=post
 	// +successCode=201
 	PostRes() (Result error)
+	private() error
 }
-
 
 // +rest:gin
 // +path=/test1

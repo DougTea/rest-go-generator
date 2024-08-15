@@ -5,6 +5,7 @@ import (
 	"io"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -223,17 +224,23 @@ func (g *GinGenerator) GenerateType(c *generator.Context, t *types.Type, w io.Wr
 	if err != nil {
 		return err
 	}
-	controllerMap := map[string]interface{}{
-		"type":  t,
-		"extra": serviceTag.Extra,
-	}
-
-	sw.Do(typeController, controllerMap)
 	methods := make([]string, 0, len(t.Methods))
-	for k, _ := range t.Methods {
-		methods = append(methods, k)
+	reg, err := regexp.Compile(`[A-Z].*`)
+	if err != nil {
+		return err
+	}
+	for k := range t.Methods {
+		if reg.Match([]byte(k)) {
+			methods = append(methods, k)
+		}
 	}
 	sort.Strings(methods)
+	controllerMap := map[string]interface{}{
+		"type":    t,
+		"extra":   serviceTag.Extra,
+		"methods": methods,
+	}
+	sw.Do(typeController, controllerMap)
 	for _, k := range methods {
 		v := t.Methods[k]
 		requestType, err := extractRequestType(v)
@@ -368,8 +375,8 @@ func New{{ .type|public }}Controller(svc {{ .type|raw }}{{- if .extra }},extra {
 
 func (g *{{ .type|public }}Controller) GetRouters()[]*web.Router{
 	return []*web.Router{
-		{{- range $k,$v := .type.Methods }}
-			g.{{ $k }}(),
+		{{- range .methods }}
+			g.{{ . }}(),
 		{{- end }}
 	}
 } 
